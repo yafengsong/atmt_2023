@@ -12,6 +12,9 @@ from seq2seq import models, utils
 from seq2seq.data.dictionary import Dictionary
 from seq2seq.data.dataset import Seq2SeqDataset, BatchSampler
 from seq2seq.models import ARCH_MODEL_REGISTRY, ARCH_CONFIG_REGISTRY
+from bpe import load_subword_nmt_table, BpeOnlineTokenizer
+import subprocess
+
 
 def get_args():
     """ Defines training-specific hyper-parameters. """
@@ -97,7 +100,32 @@ def main(args):
     bad_epochs = 0
     best_validate = float('inf')
 
+    # BPE-dropout: setting up the tokenizer
+    # use a merge table, produced by Subword-nmt:
+    merge_table_path = './example/subword_nmt.voc'
+    merge_table = load_subword_nmt_table(merge_table_path)
+    subword_nmt_tokenizer = BpeOnlineTokenizer(bpe_dropout_rate=0.1, merge_table=merge_table)
+
     for epoch in range(last_epoch + 1, args.max_epoch):
+
+        # BPE tokenizing training datasets (en and fr)
+        with open('data/en-fr/raw/raw_train.en', 'r') as exist_file, open('data/en-fr/raw/train.en', 'w') as new_file:
+            for line in exist_file:
+                bpe_sentence = subword_nmt_tokenizer(line, sentinels=['', '</w>'], regime='end', bpe_symbol='@@')
+                new_file.write(bpe_sentence)
+
+        with open('data/en-fr/raw/raw_train.fr', 'r') as exist_file, open('data/en-fr/raw/train.fr', 'w') as new_file:
+            for line in exist_file:
+                bpe_sentence = subword_nmt_tokenizer(line, sentinels=['', '</w>'], regime='end', bpe_symbol='@@')
+                new_file.write(bpe_sentence)
+
+        # Execute preprosessing (binerize)
+        bash_script = './preprocess_data.sh'
+        subprocess.run(['chmod', '+x', bash_script])
+        subprocess.run([bash_script], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+        # load the BPE data
+        train_dataset = load_data(split='train') if not args.train_on_tiny else load_data(split='tiny_train')
         train_loader = \
             torch.utils.data.DataLoader(train_dataset, num_workers=1, collate_fn=train_dataset.collater,
                                         batch_sampler=BatchSampler(train_dataset, args.max_tokens, args.batch_size, 1,
