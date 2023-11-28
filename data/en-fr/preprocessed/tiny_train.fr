@@ -102,7 +102,7 @@ Bientôt vos efforts seront récompensés .
 est @-@ ce que le café est chaud ?
 Merci de te joindre à nous .
 il est dommage que vous ne puissiez voyager avec nous .
-je me demande ce qui est arrivé à Paul .
+je me demande ce qui est arrivé à paul .
 tu sais où me trouver si tu as besoin de quoi que ce soit .
 personne ne connaît son nom .
 je vois dans votre jeu .
@@ -307,7 +307,7 @@ je ris pour que tu sois heureux .
 si je vous connaissais mieux , peut @-@ être vous aurais @-@ je laissé entrer .
 je veux aller là @-@ bas encore une fois .
 je commence à être habituée à faire ceci .
-il a écrit un livre sur sa conversion à l&apos; Islam .
+il a écrit un livre sur sa conversion à l&apos; islam .
 je l&apos; ai trouvé au grenier .
 J&apos; ignore comment vous contacter .
 je l&apos; ai invitée à aller voir un film .
@@ -838,7 +838,7 @@ nous ne sommes pas des imbéciles .
 Avez @-@ vous reconnu la moindre de ces personnes ?
 C&apos; est une proposition intéressante . J&apos; ai besoin d&apos; y réfléchir .
 C&apos; est une sorte de politicien .
-la bissexualité de bert troublait tom et excitait Mary .
+la bissexualité de Bert troublait tom et excitait Mary .
 Beaucoup d&apos; étrangers parlent bien japonais .
 Sami a agi seul .
 comment l&apos; avez @-@ vous effectué ?
