@@ -6,16 +6,17 @@ from queue import PriorityQueue
 
 class BeamSearch(object):
     """ Defines a beam search object for a single input sentence. """
+
     def __init__(self, beam_size, max_len, pad):
 
         self.beam_size = beam_size
         self.max_len = max_len
         self.pad = pad
 
-        self.nodes = PriorityQueue() # beams to be expanded
-        self.final = PriorityQueue() # beams that ended in EOS
+        self.nodes = PriorityQueue()  # beams to be expanded
+        self.final = PriorityQueue()  # beams that ended in EOS
 
-        self._counter = count() # for correct ordering of nodes with same score
+        self._counter = count()  # for correct ordering of nodes with same score
 
     def add(self, score, node):
         """ Adds a new beam search node to the queue of current nodes """
@@ -25,7 +26,7 @@ class BeamSearch(object):
         """ Adds a beam search path that ended in EOS (= finished sentence) """
         # ensure all node paths have the same length for batch ops
         missing = self.max_len - node.length
-        node.sequence = torch.cat((node.sequence.cpu(), torch.tensor([self.pad]*missing).long()))
+        node.sequence = torch.cat((node.sequence.cpu(), torch.tensor([self.pad] * missing).long()))
         self.final.put((score, next(self._counter), node))
 
     def get_current_beams(self):
@@ -59,7 +60,7 @@ class BeamSearch(object):
         nodes = PriorityQueue()
         # Keep track of how many search paths are already finished (EOS)
         finished = self.final.qsize()
-        for _ in range(self.beam_size-finished):
+        for _ in range(self.beam_size - finished):
             node = self.nodes.get()
             nodes.put(node)
         self.nodes = nodes
@@ -67,8 +68,8 @@ class BeamSearch(object):
 
 class BeamSearchNode(object):
     """ Defines a search node and stores values important for computation of beam search path"""
-    def __init__(self, search, emb, lstm_out, final_hidden, final_cell, mask, sequence, logProb, length):
 
+    def __init__(self, search, emb, lstm_out, final_hidden, final_cell, mask, sequence, logProb, length):
         # Attributes needed for computation of decoder states
         self.sequence = sequence
         self.emb = emb
@@ -93,6 +94,5 @@ class BeamSearchNode(object):
             14 as lp), default setting of 0.0 has no effect
         
         """
-        normalizer = (5 + self.length)**alpha / (5 + 1)**alpha
+        normalizer = (5 + self.length) ** alpha / (5 + 1) ** alpha
         return self.logp / normalizer
-        

@@ -30,9 +30,12 @@ def get_args():
     parser.add_argument('--max-len', default=100, type=int, help='maximum length of generated sequence')
 
     # Add beam search arguments
-    parser.add_argument('--beam-size', default=1, type=int, help='number of hypotheses expanded in beam search')
+    parser.add_argument('--beam-size', default=5, type=int, help='number of hypotheses expanded in beam search')
     # alpha hyperparameter for length normalization (described as lp in https://arxiv.org/pdf/1609.08144.pdf equation 14)
     parser.add_argument('--alpha', default=0.0, type=float, help='alpha for softer length normalization')
+
+    # Add lambda argument for UID-decoding penalty
+    parser.add_argument('--lambda', dest='lambda_value', default=0.5, type=float, help='Lambda value for UID-decoding squared regularizer penalty')
 
     return parser.parse_args()
 
@@ -99,6 +102,7 @@ def main(args):
                                                     args.beam_size + 1, dim=-1)
 
         #  Create number of beam_size beam search nodes for every input sentence
+        # next_candidates is a three-dimensional tensor: next_candidates[Batch Size,Sequence Length,Candidates]
         for i in range(batch_size):
             for j in range(args.beam_size):
                 best_candidate = next_candidates[i, :, j]
@@ -169,6 +173,12 @@ def main(args):
                     # Get parent node and beam search object for corresponding sentence
                     node = nodes[i]
                     search = node.search
+
+                    ### Calculate penalty ###
+                    penalty = args.lambda_value * torch.sum((-node.logp)**2)
+
+                    ### Update the log probabilities to the regularized ones ###
+                    node.logp = node.logp - penalty
 
                     # __QUESTION 4: How are "add" and "add_final" different? 
                     # What would happen if we did not make this distinction?
