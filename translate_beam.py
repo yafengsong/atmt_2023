@@ -30,15 +30,16 @@ def get_args():
     parser.add_argument('--max-len', default=100, type=int, help='maximum length of generated sequence')
 
     # Add beam search arguments
-    parser.add_argument('--beam-size', default=5, type=int, help='number of hypotheses expanded in beam search')
+    parser.add_argument('--beam-size', default=13, type=int, help='number of hypotheses expanded in beam search')
     # alpha hyperparameter for length normalization (described as lp in https://arxiv.org/pdf/1609.08144.pdf equation 14)
-    parser.add_argument('--alpha', default=0.0, type=float, help='alpha for softer length normalization')
+    parser.add_argument('--alpha', default=0.8, type=float, help='alpha for softer length normalization')
 
     # Add lambda argument for UID-decoding penalty
     parser.add_argument('--lambda', dest='lambda_value', default=0.5, type=float, help='Lambda value for UID-decoding squared regularizer penalty')
+    # Add n_best argument
+    parser.add_argument('--n-best', default=3, type=int, help='number of best sentences to generate')
 
     return parser.parse_args()
-
 
 def main(args):
     """ Main translation function' """
@@ -77,6 +78,9 @@ def main(args):
     # Iterate over the test set
     all_hyps = {}
     for i, sample in enumerate(progress_bar):
+        # Initialize an empty list in all_hyps for each sentence ID in the batch
+        for sent_id in sample['id'].data:
+            all_hyps[int(sent_id)] = []
 
         # Create a beam search object or every input sentence in batch
         batch_size = sample['src_tokens'].shape[0]
@@ -123,8 +127,9 @@ def main(args):
                 except TypeError:
                     mask = None
 
+                parent_id = None
                 node = BeamSearchNode(searches[i], emb, lstm_out, final_hidden, final_cell,
-                                      mask, torch.cat((go_slice[i], next_word)), log_p, 1)
+                                      mask, torch.cat((go_slice[i], next_word)), log_p, 1, parent_id)
                 # __QUESTION 3: Why do we add the node with a negative score?
                 searches[i].add(-node.eval(args.alpha), node)
 
@@ -173,14 +178,15 @@ def main(args):
                     # Get parent node and beam search object for corresponding sentence
                     node = nodes[i]
                     search = node.search
+                    parent_id = id(node)
 
                     ### Calculate penalty ###
-                    penalty = args.lambda_value * torch.sum((-node.logp)**2)
+                    # penalty = args.lambda_value * torch.sum((-node.logp)**2)
 
                     ### Update the log probabilities to the regularized ones ###
-                    node.logp = node.logp - penalty
+                    # node.logp = node.logp - penalty
 
-                    # __QUESTION 4: How are "add" and "add_final" different? 
+                    # __QUESTION 4: How are "add" and "add_final" different?
                     # What would happen if we did not make this distinction?
 
                     # Store the node as final if EOS is generated
@@ -188,7 +194,7 @@ def main(args):
                         node = BeamSearchNode(
                             search, node.emb, node.lstm_out, node.final_hidden,
                             node.final_cell, node.mask, torch.cat((prev_words[i][0].view([1]),
-                                                                   next_word)), node.logp, node.length
+                                                                   next_word)), node.logp, node.length, parent_id
                         )
                         search.add_final(-node.eval(args.alpha), node)
 
@@ -197,7 +203,7 @@ def main(args):
                         node = BeamSearchNode(
                             search, node.emb, node.lstm_out, node.final_hidden,
                             node.final_cell, node.mask, torch.cat((prev_words[i][0].view([1]),
-                                                                   next_word)), node.logp + log_p, node.length + 1
+                                                                   next_word)), node.logp + log_p, node.length + 1, parent_id
                         )
                         search.add(-node.eval(args.alpha), node)
 
@@ -207,34 +213,35 @@ def main(args):
             for search in searches:
                 search.prune()
 
-        # Segment into sentences
-        best_sents = torch.stack([search.get_best()[1].sequence[1:].cpu() for search in searches])
-        decoded_batch = best_sents.numpy()
-        # import pdb;pdb.set_trace()
+        # Iterate over each search object and process the sentences
+        for search_idx, search in enumerate(searches):
+            best_nodes = search.get_best(args.n_best)
+            best_sents = [node.sequence[1:].cpu() for _, node in best_nodes]
+            decoded_batch = torch.stack(best_sents).numpy()
 
-        output_sentences = [decoded_batch[row, :] for row in range(decoded_batch.shape[0])]
+            output_sentences = [decoded_batch[row, :] for row in range(decoded_batch.shape[0])]
 
-        # __QUESTION 6: What is the purpose of this for loop?
-        temp = list()
-        for sent in output_sentences:
-            first_eos = np.where(sent == tgt_dict.eos_idx)[0]
-            if len(first_eos) > 0:
-                temp.append(sent[:first_eos[0]])
-            else:
-                temp.append(sent)
-        output_sentences = temp
+            # Process each sentence and append to the corresponding key in all_hyps
+            temp = []
+            for sent in output_sentences:
+                first_eos = np.where(sent == tgt_dict.eos_idx)[0]
+                if len(first_eos) > 0:
+                    temp.append(sent[:first_eos[0]])
+                else:
+                    temp.append(sent)
 
-        # Convert arrays of indices into strings of words
-        output_sentences = [tgt_dict.string(sent) for sent in output_sentences]
+            processed_sentences = [tgt_dict.string(sent) for sent in temp]
 
-        for ii, sent in enumerate(output_sentences):
-            all_hyps[int(sample['id'].data[ii])] = sent
+            # The key for storing translations should correspond to the actual sentence ID
+            sentence_id = int(sample['id'].data[search_idx])
+            all_hyps[sentence_id].extend(processed_sentences)
 
     # Write to file
     if args.output is not None:
         with open(args.output, 'w') as out_file:
-            for sent_id in range(len(all_hyps.keys())):
-                out_file.write(all_hyps[sent_id] + '\n')
+            for sent_id, sentences in all_hyps.items():
+                for sent in sentences:
+                    out_file.write(sent + '\n')
 
 
 if __name__ == '__main__':

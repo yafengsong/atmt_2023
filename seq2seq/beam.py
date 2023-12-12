@@ -17,10 +17,24 @@ class BeamSearch(object):
         self.final = PriorityQueue()  # beams that ended in EOS
 
         self._counter = count()  # for correct ordering of nodes with same score
+        self.current_parent_nodes = {}  # Track the current parent nodes
 
     def add(self, score, node):
-        """ Adds a new beam search node to the queue of current nodes """
-        self.nodes.put((score, next(self._counter), node))
+        """
+        Adds a new beam search node to the queue of current nodes.
+        Now includes a diversity penalty for nodes sharing the same parent.
+        """
+        parent_id = node.parent_id
+        if parent_id in self.current_parent_nodes:
+            rank = self.current_parent_nodes[parent_id]
+            self.current_parent_nodes[parent_id] += 1
+        else:
+            rank = 0
+            self.current_parent_nodes[parent_id] = 1
+        gamma = 0
+        diversity_penalty = -gamma * rank
+        adjusted_score = score + diversity_penalty  # Apply the diversity penalty
+        self.nodes.put((adjusted_score, next(self._counter), node))
 
     def add_final(self, score, node):
         """ Adds a beam search path that ended in EOS (= finished sentence) """
@@ -37,8 +51,8 @@ class BeamSearch(object):
             nodes.append((node[0], node[2]))
         return nodes
 
-    def get_best(self):
-        """ Returns final node with the lowest negative log probability """
+    def get_best(self, n_best):
+        """ Returns the top n_best nodes with the lowest negative log probability """
         # Merge EOS paths and those that were stopped by
         # max sequence length (still in nodes)
         merged = PriorityQueue()
@@ -50,10 +64,13 @@ class BeamSearch(object):
             node = self.nodes.get()
             merged.put(node)
 
-        node = merged.get()
-        node = (node[0], node[2])
+        best_nodes = []
+        for _ in range(min(n_best, merged.qsize())):
+            node = merged.get()
+            node = (node[0], node[2])
+            best_nodes.append(node)
 
-        return node
+        return best_nodes
 
     def prune(self):
         """ Removes all nodes but the beam_size best ones (lowest neg log prob) """
@@ -69,7 +86,8 @@ class BeamSearch(object):
 class BeamSearchNode(object):
     """ Defines a search node and stores values important for computation of beam search path"""
 
-    def __init__(self, search, emb, lstm_out, final_hidden, final_cell, mask, sequence, logProb, length):
+    def __init__(self, search, emb, lstm_out, final_hidden, final_cell, mask, sequence, logProb, length,
+                 parent_id=None):
         # Attributes needed for computation of decoder states
         self.sequence = sequence
         self.emb = emb
@@ -78,13 +96,16 @@ class BeamSearchNode(object):
         self.final_cell = final_cell
         self.mask = mask
 
+        ### Track the parent node ID for diversity penalty
+        self.parent_id = parent_id
+
         # Attributes needed for computation of sequence score
         self.logp = logProb
         self.length = length
 
         self.search = search
 
-    def eval(self, alpha=0.0):
+    def eval(self, alpha=0.8):
         """ Returns score of sequence up to this node 
 
         params: 
